@@ -1,0 +1,27 @@
+import os
+from zipfile import ZipFile
+
+# ✅ Configuration
+# Set path to theZoo binaries and output path
+THEZOO_BINARIES_PATH = r"C:\Users\Windows10\theZoo\malware\Binaries"
+OUTPUT_PATH = r"C:\Users\Windows10\Desktop\samples\malware"
+
+# Ensure the output path exists
+os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+# Walk through theZoo Binaries folder
+for root, dirs, files in os.walk(THEZOO_BINARIES_PATH):
+    for file in files:
+        if file.endswith(".zip"):
+            zip_path = os.path.join(root, file)
+            family_name = os.path.basename(root)
+
+            output_dir = os.path.join(OUTPUT_PATH, family_name)
+            os.makedirs(output_dir, exist_ok=True)
+
+            try:
+                with ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(path=output_dir, pwd=b'infected')
+                    print(f"[+] Extracted: {file} → {output_dir}")
+            except Exception as e:
+                print(f"[!] Failed to extract {file}: {e}")
