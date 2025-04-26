@@ -1,0 +1,56 @@
+import os
+import pandas as pd
+
+# Define paths
+MALICIOUS_DIRS = ["./captures/dos", "./captures/port"]
+BENIGN_DIR = "./captures/normal/new"
+
+# Feature columns you want to extract
+FEATURE_COLUMNS = [
+    'id.orig_h', 'id.resp_h', 'id.orig_p', 'id.resp_p',
+    'proto', 'service', 'duration', 'orig_bytes', 'resp_bytes', 'conn_state'
+]
+
+# Helper to read conn.log safely
+def read_conn_log(path):
+    try:
+        df = pd.read_csv(path, sep="\t", comment="#", low_memory=False)
+        df = df[FEATURE_COLUMNS]
+        return df
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+        return pd.DataFrame()
+
+# Step 1: Process Malicious Traffic
+malicious_data = []
+
+for mal_dir in MALICIOUS_DIRS:
+    conn_path = os.path.join(mal_dir, "conn.log")
+    if os.path.exists(conn_path):
+        df = read_conn_log(conn_path)
+        if not df.empty:
+            df['label'] = 1
+            malicious_data.append(df)
+
+malicious_df = pd.concat(malicious_data, ignore_index=True)
+malicious_df.to_csv("malicious_dataset.csv", index=False)
+print("Malicious dataset created: malicious_dataset.csv")
+
+# Step 2: Process Benign Traffic
+benign_data = []
+
+conn_path = os.path.join(BENIGN_DIR, "conn.log")
+if os.path.exists(conn_path):
+    df = read_conn_log(conn_path)
+    if not df.empty:
+        df['label'] = 0
+        benign_data.append(df)
+
+benign_df = pd.concat(benign_data, ignore_index=True)
+benign_df.to_csv("benign_dataset.csv", index=False)
+print("Benign dataset created: benign_dataset.csv")
+
+# Step 3: Merge Both
+full_dataset = pd.concat([malicious_df, benign_df], ignore_index=True)
+full_dataset.to_csv("final_dataset.csv", index=False)
+print("Full final dataset created: final_dataset.csv")
