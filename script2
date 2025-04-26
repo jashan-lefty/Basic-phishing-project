@@ -1,72 +1,21 @@
-import os
 import pandas as pd
 
-# 📂 Define paths
-MALICIOUS_DIRS = ["./captures/dos", "./captures/port"]
-BENIGN_DIR = "./captures/normal/new"
+# 📂 Path to your DoS conn.log
+dos_conn_log = "./captures/dos/conn.log"
 
-# 📂 Target features
-FEATURE_COLUMNS = [
-    'id.orig_h', 'id.resp_h', 'id.orig_p', 'id.resp_p',
-    'proto', 'service', 'duration', 'orig_bytes', 'resp_bytes', 'conn_state'
-]
+# 📂 Output CSV file
+output_csv = "dos_conn.csv"
 
-# ⚡ Helper to read conn.log safely
-def read_conn_log(path):
-    try:
-        df = pd.read_csv(
-            path,
-            sep="\t",
-            comment="#",
-            na_values="-",   # Treat "-" as NaN
-            low_memory=False
-        )
-        available_features = [col for col in FEATURE_COLUMNS if col in df.columns]
-        df = df[available_features]
-        return df
-    except Exception as e:
-        print(f"Error reading {path}: {e}")
-        return pd.DataFrame()
+# 📥 Read conn.log
+df = pd.read_csv(
+    dos_conn_log,
+    sep="\t",          # Zeek logs are tab-separated
+    comment="#",       # Ignore comments starting with #
+    na_values="-",     # Treat '-' as NaN (missing value)
+    low_memory=False
+)
 
-# 📥 Step 1: Process Malicious Traffic
-malicious_data = []
+# 💾 Save to CSV
+df.to_csv(output_csv, index=False)
 
-for mal_dir in MALICIOUS_DIRS:
-    conn_path = os.path.join(mal_dir, "conn.log")
-    if os.path.exists(conn_path):
-        df = read_conn_log(conn_path)
-        if not df.empty:
-            df['label'] = 1
-            malicious_data.append(df)
-
-if malicious_data:
-    malicious_df = pd.concat(malicious_data, ignore_index=True)
-    malicious_df.to_csv("malicious_dataset.csv", index=False)
-    print("✅ Malicious dataset created: malicious_dataset.csv")
-else:
-    print("⚠️ No malicious data found!")
-
-# 📥 Step 2: Process Benign Traffic
-benign_data = []
-
-conn_path = os.path.join(BENIGN_DIR, "conn.log")
-if os.path.exists(conn_path):
-    df = read_conn_log(conn_path)
-    if not df.empty:
-        df['label'] = 0
-        benign_data.append(df)
-
-if benign_data:
-    benign_df = pd.concat(benign_data, ignore_index=True)
-    benign_df.to_csv("benign_dataset.csv", index=False)
-    print("✅ Benign dataset created: benign_dataset.csv")
-else:
-    print("⚠️ No benign data found!")
-
-# 📥 Step 3: Merge if both exist
-if malicious_data and benign_data:
-    full_dataset = pd.concat([malicious_df, benign_df], ignore_index=True)
-    full_dataset.to_csv("final_dataset.csv", index=False)
-    print("✅ Full final dataset created: final_dataset.csv")
-else:
-    print("⚠️ Skipping full dataset creation due to missing parts.")
+print(f"✅ Successfully converted DoS conn.log to {output_csv}")
