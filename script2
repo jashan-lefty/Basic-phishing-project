@@ -1,21 +1,11 @@
-import pandas as pd
+# 1. Extract only the fields we want, into a TSV:
+zeek-cut id.orig_h id.resp_h id.orig_p id.resp_p proto service duration orig_bytes resp_bytes conn_state < captures/dos/conn.log > dos_features.tsv
 
-# 📂 Path to your DoS conn.log
-dos_conn_log = "./captures/dos/conn.log"
+# 2. Convert tabs to commas and add a header row:
+echo "id.orig_h,id.resp_h,id.orig_p,id.resp_p,proto,service,duration,orig_bytes,resp_bytes,conn_state" > dos_features.csv
+tail -n +2 dos_features.tsv | tr '\t' ',' >> dos_features.csv
 
-# 📂 Output CSV file
-output_csv = "dos_conn.csv"
+# 3. (Optional) clean up
+rm dos_features.tsv
 
-# 📥 Read conn.log
-df = pd.read_csv(
-    dos_conn_log,
-    sep="\t",          # Zeek logs are tab-separated
-    comment="#",       # Ignore comments starting with #
-    na_values="-",     # Treat '-' as NaN (missing value)
-    low_memory=False
-)
-
-# 💾 Save to CSV
-df.to_csv(output_csv, index=False)
-
-print(f"✅ Successfully converted DoS conn.log to {output_csv}")
+# Now dos_features.csv contains exactly the 10 protocol‐agnostic features for your DoS traffic.
