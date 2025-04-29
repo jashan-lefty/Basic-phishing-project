@@ -10,5 +10,5 @@ rm dos_features.tsv
 
 # Now dos_features.csv contains exactly the 10 protocol‐agnostic features for your DoS traffic.
 
-zeek-cut uid id.orig_h id.orig_p id.resp_h id.resp_p proto duration orig_bytes resp_bytes conn_state local_orig local_resp missed_bytes history orig_ip_bytes resp_pkts resp_ip_bytes proto < conn.log > extracted.csv
+zeek-cut uid id.orig_h id.orig_p id.resp_h id.resp_p proto service duration orig_bytes resp_bytes conn_state local_orig local_resp missed_bytes history orig_pkts orig_ip_bytes resp_pkts resp_ip_bytes ip_proto < conn.log > extracted.csv
 
