@@ -12,3 +12,22 @@ rm dos_features.tsv
 
 zeek-cut uid id.orig_h id.orig_p id.resp_h id.resp_p proto service duration orig_bytes resp_bytes conn_state local_orig local_resp missed_bytes history orig_pkts orig_ip_bytes resp_pkts resp_ip_bytes ip_proto < conn.log > extracted.csv
 
+import pandas as pd
+
+# Load the first CSV (with header)
+df1 = pd.read_csv('first.csv')
+
+# Load the next two CSVs (no header)
+df2 = pd.read_csv('second.csv', header=None)
+df3 = pd.read_csv('third.csv', header=None)
+
+# Assign the same column names to df2 and df3
+df2.columns = df1.columns
+df3.columns = df1.columns
+
+# Combine them
+combined_df = pd.concat([df1, df2, df3], ignore_index=True)
+
+# Save the combined CSV
+combined_df.to_csv('combined.csv', index=False)
+
