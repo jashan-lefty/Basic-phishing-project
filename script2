@@ -31,3 +31,8 @@ combined_df = pd.concat([df1, df2, df3], ignore_index=True)
 # Save the combined CSV
 combined_df.to_csv('combined.csv', index=False)
 
+
+# Combine 3 files: keep header from first, skip header for next two
+(head -n 1 first.csv && tail -n +2 first.csv && tail -n +2 second.csv && tail -n +2 third.csv) > combined.csv
+
+
