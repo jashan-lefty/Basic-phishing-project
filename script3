@@ -39,11 +39,10 @@ print(f"[✔] Manifest generated at {OUT_MANIFEST}")
 
 
 import os
+import math
 import pefile
 import pandas as pd
-import math
 
-# calculate Shannon entropy of a block of data
 def calc_entropy(data: bytes) -> float:
     if not data:
         return 0.0
@@ -51,29 +50,32 @@ def calc_entropy(data: bytes) -> float:
     probs  = [c/len(data) for c in counts if c]
     return -sum(p * math.log2(p) for p in probs)
 
-# load your manifest
+# ─── Load manifest ─────────────────────────────────────────────────────────────
 df = pd.read_csv(r"C:\samples\manifest.csv")
 
 features = []
+std_names = {".text", ".data", ".rdata", ".rsrc", ".idata", ".pdata", ".reloc"}
+
 for _, row in df.iterrows():
-    path      = row.FullPath
-    label     = row.Label
-    mclass    = row.Malware_Class
+    path   = row.FullPath
+    label  = row.Label
+    mclass = row.Malware_Class
+
     try:
         pe = pefile.PE(path)
-    except (pefile.PEFormatError, FileNotFoundError):
-        continue   # skip non-PE or missing files
+    except Exception as e:
+        print(f"[!] Skipping unreadable file: {path} ({e})")
+        continue
 
-    # --- SECTION FEATURES ---
+    # SECTION FEATURES
     secs       = pe.sections
     num_sec    = len(secs)
     non_std   = 0
     mismatch  = 0
     entropies = []
 
-    std_names = {".text", ".data", ".rdata", ".rsrc", ".idata", ".pdata"}
     for s in secs:
-        name = s.Name.decode(errors="ignore").strip("\x00").lower()
+        name = s.Name.decode(errors="ignore").rstrip('\x00').lower()
         if name not in std_names:
             non_std += 1
         if s.Misc_VirtualSize != s.SizeOfRawData:
@@ -82,10 +84,10 @@ for _, row in df.iterrows():
         ent  = calc_entropy(data)
         entropies.append(ent)
 
-    avg_ent  = round(sum(entropies)/num_sec, 3) if num_sec else 0.0
-    packed   = int(any(e > 7.0 for e in entropies))
+    avg_ent = round(sum(entropies)/num_sec, 3) if num_sec else 0.0
+    packed  = int(any(e > 7.0 for e in entropies))
 
-    # --- IMPORT FEATURES ---
+    # IMPORT FEATURES
     dlls = []
     apis = []
     if hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
@@ -99,23 +101,24 @@ for _, row in df.iterrows():
     unique_apis = sorted(set(apis))
 
     features.append({
-        "Sample":            row.Filename,
-        "FullPath":          path,
-        "Label":             label,
-        "Malware_Class":     mclass,
-        "Num_Sections":      num_sec,
+        "Sample":               row.Filename,
+        "FullPath":             path,
+        "Label":                label,
+        "Malware_Class":        mclass,
+        "Num_Sections":         num_sec,
         "Non_Standard_Sections": non_std,
-        "Size_Mismatch_Count":   mismatch,
-        "Avg_Entropy":           avg_ent,
-        "Packed":                packed,
-        "Num_Imported_DLLs":     len(unique_dlls),
-        "Num_Imported_APIs":     len(unique_apis),
-        "DLLs":                  ",".join(unique_dlls),
-        "APIs":                  ",".join(unique_apis),
+        "Size_Mismatch_Count":  mismatch,
+        "Avg_Entropy":          avg_ent,
+        "Packed":               packed,
+        "Num_Imported_DLLs":    len(unique_dlls),
+        "Num_Imported_APIs":    len(unique_apis),
+        "DLLs":                 ",".join(unique_dlls),
+        "APIs":                 ",".join(unique_apis),
     })
 
-# write out your full feature matrix
+# ─── Save feature matrix ────────────────────────────────────────────────────────
 out_df = pd.DataFrame(features)
 out_df.to_csv("static_feature_matrix.csv", index=False)
-print(f"[✔] Extracted {len(out_df)} PE files with full static features.")
+print(f"[✔] Extracted features from {len(out_df)} files into static_feature_matrix.csv")
+
 
