@@ -25,3 +25,32 @@ for root, dirs, files in os.walk(THEZOO_BINARIES_PATH):
                     print(f"[+] Extracted: {file} → {output_dir}")
             except Exception as e:
                 print(f"[!] Failed to extract {file}: {e}")
+
+
+
+
+# New
+import os
+import pefile
+
+def is_pe_file(file_path):
+    try:
+        pefile.PE(file_path)
+        return True
+    except:
+        return False
+
+def count_pe_files(base_dir):
+    count = 0
+    for root, _, files in os.walk(base_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if is_pe_file(file_path):
+                count += 1
+    return count
+
+# 🔧 Change this to your malware folder path
+directory = r"C:\samples\malware"
+total = count_pe_files(directory)
+
+print(f"[✔] Total PE files in {directory}: {total}")
