@@ -1,24 +1,40 @@
 import os
 import csv
+import pefile
 
-BASE      = r"C:\samples"
-OUT_MAN   = r"C:\samples\manifest.csv"
-HEADER    = ["Filename","FullPath","Label","Malware_Class"]
+def is_pe_file(path: str) -> bool:
+    """
+    Return True if 'path' is a valid PE (Portable Executable) file.
+    """
+    try:
+        pefile.PE(path)
+        return True
+    except:
+        return False
 
-with open(OUT_MAN, "w", newline="") as csvf:
+# ─── Configuration ─────────────────────────────────────────────────────────────
+BASE_DIR    = r"C:\samples"                   # top‐level folder containing 'malware' and 'benign'
+OUT_MANIFEST = r"C:\samples\manifest.csv"     # where to write your manifest
+# ───────────────────────────────────────────────────────────────────────────────
+
+with open(OUT_MANIFEST, "w", newline="") as csvf:
     writer = csv.writer(csvf)
-    writer.writerow(HEADER)
+    # header row
+    writer.writerow(["Filename", "FullPath", "Label", "Malware_Class"])
 
-    # walk malware and benign
-    for label in ("malware","benign"):
-        root_dir = os.path.join(BASE, label)
-        for class_folder, dirs, files in os.walk(root_dir):
-            # for benign, class_folder == root_dir; treat class as blank or "Benign"
-            mal_class = os.path.basename(class_folder) if label=="malware" else "Benign"
+    for label in ("malware", "benign"):
+        root_path = os.path.join(BASE_DIR, label)
+        for dirpath, _, files in os.walk(root_path):
+            # for benign samples we'll just tag the class as "Benign"
+            mal_class = os.path.basename(dirpath) if label == "malware" else "Benign"
+
             for fname in files:
-                full = os.path.join(class_folder, fname)
-                writer.writerow([fname, full, label, mal_class])
-print("Manifest written to", OUT_MAN)
+                full_path = os.path.join(dirpath, fname)
+                if not is_pe_file(full_path):
+                    continue
+                writer.writerow([fname, full_path, label, mal_class])
+
+print(f"[✔] Manifest generated at {OUT_MANIFEST}")
 
 
 
