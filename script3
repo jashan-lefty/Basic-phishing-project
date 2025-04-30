@@ -1,0 +1,21 @@
+import os
+import csv
+
+BASE      = r"C:\samples"
+OUT_MAN   = r"C:\samples\manifest.csv"
+HEADER    = ["Filename","FullPath","Label","Malware_Class"]
+
+with open(OUT_MAN, "w", newline="") as csvf:
+    writer = csv.writer(csvf)
+    writer.writerow(HEADER)
+
+    # walk malware and benign
+    for label in ("malware","benign"):
+        root_dir = os.path.join(BASE, label)
+        for class_folder, dirs, files in os.walk(root_dir):
+            # for benign, class_folder == root_dir; treat class as blank or "Benign"
+            mal_class = os.path.basename(class_folder) if label=="malware" else "Benign"
+            for fname in files:
+                full = os.path.join(class_folder, fname)
+                writer.writerow([fname, full, label, mal_class])
+print("Manifest written to", OUT_MAN)
