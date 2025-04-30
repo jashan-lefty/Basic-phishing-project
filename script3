@@ -50,12 +50,27 @@ def calc_entropy(data: bytes) -> float:
     probs  = [c/len(data) for c in counts if c]
     return -sum(p * math.log2(p) for p in probs)
 
-# ─── Load manifest ─────────────────────────────────────────────────────────────
-df = pd.read_csv(r"C:\samples\manifest.csv")
+# ─── Config ─────────────────────────────────────────────────────────────────────
+MANIFEST_CSV = r"C:\samples\manifest.csv"
+OUTPUT_CSV   = r"C:\samples\static_feature_matrix.csv"
+# List of specific APIs and DLLs to flag
+APIS = [
+    "WriteFile","CreateProcessW","CreateDirectory","sleep",
+    "GetProcAddress","CreatePopupMenu","CloseClipboard",
+    "LoadLibraryA","GetModuleHandleA"
+]
+DLLS = [
+    "msvcpl40.dll","user32.dll","vcruntime140.dll",
+    "oleaut32.dll","kernel.dll","mscore.dll","advapi.dll"
+]
+# Standard section names
+STD_SECTIONS = {".text", ".data", ".rdata", ".rsrc", ".idata", ".pdata", ".reloc"}
+# ────────────────────────────────────────────────────────────────────────────────
 
-features = []
-std_names = {".text", ".data", ".rdata", ".rsrc", ".idata", ".pdata", ".reloc"}
+# load manifest
+df = pd.read_csv(MANIFEST_CSV)
 
+rows = []
 for _, row in df.iterrows():
     path   = row.FullPath
     label  = row.Label
@@ -63,62 +78,107 @@ for _, row in df.iterrows():
 
     try:
         pe = pefile.PE(path)
-    except Exception as e:
-        print(f"[!] Skipping unreadable file: {path} ({e})")
+    except Exception:
+        # skip non‐PE or corrupted files
         continue
 
-    # SECTION FEATURES
+    # ── Header Fields ─────────────────────────────────────
+    fh = pe.FILE_HEADER
+    oh = pe.OPTIONAL_HEADER
+
+    header_feats = {
+        "MajorLinkerVersion":      oh.MajorLinkerVersion,
+        "MinorLinkerVersion":      oh.MinorLinkerVersion,
+        "SizeOfCode":              oh.SizeOfCode,
+        "SizeOfInitializedData":   oh.SizeOfInitializedData,
+        "SizeOfUninitializedData": oh.SizeOfUninitializedData,
+        "AddressOfEntryPoint":     oh.AddressOfEntryPoint,
+        "BaseOfCode":              oh.BaseOfCode,
+        "ImageBase":               oh.ImageBase,
+        "SectionAlignment":        oh.SectionAlignment,
+        "SizeOfHeaders":           oh.SizeOfHeaders,
+        "Machine":                 fh.Machine,
+        "Magic":                   oh.Magic
+    }
+
+    # ── Section Features ───────────────────────────────────
     secs       = pe.sections
     num_sec    = len(secs)
-    non_std   = 0
-    mismatch  = 0
-    entropies = []
+    non_std    = 0
+    mismatch   = 0
+    entropies  = []
+
+    total_vs   = 0
+    total_rs   = 0
 
     for s in secs:
-        name = s.Name.decode(errors="ignore").rstrip('\x00').lower()
-        if name not in std_names:
+        name = s.Name.decode(errors="ignore").strip("\x00").lower()
+        if name not in STD_SECTIONS:
             non_std += 1
         if s.Misc_VirtualSize != s.SizeOfRawData:
             mismatch += 1
+
         data = s.get_data()
         ent  = calc_entropy(data)
         entropies.append(ent)
 
+        total_vs += s.Misc_VirtualSize
+        total_rs += s.SizeOfRawData
+
     avg_ent = round(sum(entropies)/num_sec, 3) if num_sec else 0.0
     packed  = int(any(e > 7.0 for e in entropies))
 
-    # IMPORT FEATURES
-    dlls = []
-    apis = []
+    section_feats = {
+        "Num_Sections":           num_sec,
+        "Non_Standard_Sections":  non_std,
+        "Size_Mismatch_Count":    mismatch,
+        "Avg_Entropy":            avg_ent,
+        "Packed":                 packed,
+        "Total_VirtualSize":      total_vs,
+        "Total_RawSize":          total_rs
+    }
+
+    # ── Import Features ────────────────────────────────────
+    dll_list = []
+    api_list = []
     if hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
         for entry in pe.DIRECTORY_ENTRY_IMPORT:
-            dlls.append(entry.dll.decode(errors="ignore"))
+            dll_list.append(entry.dll.decode(errors="ignore").lower())
             for imp in entry.imports:
                 if imp.name:
-                    apis.append(imp.name.decode(errors="ignore"))
+                    api_list.append(imp.name.decode(errors="ignore"))
 
-    unique_dlls = sorted(set(dlls))
-    unique_apis = sorted(set(apis))
+    uniq_dlls = set(dll_list)
+    uniq_apis = set(api_list)
 
-    features.append({
-        "Sample":               row.Filename,
-        "FullPath":             path,
-        "Label":                label,
-        "Malware_Class":        mclass,
-        "Num_Sections":         num_sec,
-        "Non_Standard_Sections": non_std,
-        "Size_Mismatch_Count":  mismatch,
-        "Avg_Entropy":          avg_ent,
-        "Packed":               packed,
-        "Num_Imported_DLLs":    len(unique_dlls),
-        "Num_Imported_APIs":    len(unique_apis),
-        "DLLs":                 ",".join(unique_dlls),
-        "APIs":                 ",".join(unique_apis),
-    })
+    # count of all imported (optional)
+    import_counts = {
+        "Num_Imported_DLLs": len(uniq_dlls),
+        "Num_Imported_APIs": len(uniq_apis)
+    }
 
-# ─── Save feature matrix ────────────────────────────────────────────────────────
-out_df = pd.DataFrame(features)
-out_df.to_csv("static_feature_matrix.csv", index=False)
-print(f"[✔] Extracted features from {len(out_df)} files into static_feature_matrix.csv")
+    # binary flags for your chosen DLLs/APIs
+    dll_flags = { f"has_{d}": int(d in uniq_dlls) for d in DLLS }
+    api_flags = { f"has_{a}": int(a in uniq_apis) for a in APIS }
+
+    # ── Assemble feature row ───────────────────────────────
+    row_feats = {
+        "Sample":        row.Filename,
+        "FullPath":      path,
+        "Label":         label,
+        "Malware_Class": mclass
+    }
+    row_feats.update(header_feats)
+    row_feats.update(section_feats)
+    row_feats.update(import_counts)
+    row_feats.update(dll_flags)
+    row_feats.update(api_flags)
+
+    rows.append(row_feats)
+
+# ── Write out the full feature matrix ────────────────────────────────
+out_df = pd.DataFrame(rows)
+out_df.to_csv(OUTPUT_CSV, index=False)
+print(f"[✔] Wrote {len(out_df)} rows to {OUTPUT_CSV}")
 
 
