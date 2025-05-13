@@ -54,3 +54,95 @@ directory = r"C:\samples\malware"
 total = count_pe_files(directory)
 
 print(f"[✔] Total PE files in {directory}: {total}")
+
+
+
+
+
+import os, re, subprocess, logging
+import pandas as pd
+import csv
+
+# ─── Config ────────────────────────────────────────────────────────────────────
+MANIFEST_CSV   = r"C:\samples\manifest.csv"
+OUTPUT_CSV     = r"C:\samples\dynamic_features.csv"
+ERROR_LOG      = r"C:\samples\errors.log"
+
+APIMINER_EXE   = r"C:\Users\Windows10\Desktop\Tools\APIMiner\APIMiner-1.1\bin\APIMiner.exe"
+MONITOR_DLL    = r"C:\Users\Windows10\Desktop\Tools\APIMiner\APIMiner-1.1\bin\apiminer-monitor-x86.dll"
+
+TIMEOUT_SECS   = 300     # kill any stuck process after 5 min
+CSV_FIELDS     = ["Sample","FullPath","Label","Malware_Class","Called_APIs"]
+# ────────────────────────────────────────────────────────────────────────────────
+
+logging.basicConfig(filename=ERROR_LOG,
+                    level=logging.ERROR,
+                    format='%(asctime)s %(levelname)s: %(message)s')
+
+def parse_apis(text):
+    """Extract API names from APIMiner stdout."""
+    apis = set()
+    for line in text.splitlines():
+        m = re.match(r'^\s*([A-Za-z0-9_]+)\(', line)
+        if m:
+            apis.add(m.group(1))
+    return sorted(apis)
+
+# If OUTPUT_CSV doesn't exist yet, write header
+if not os.path.exists(OUTPUT_CSV):
+    with open(OUTPUT_CSV, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(CSV_FIELDS)
+
+# Load the manifest
+df = pd.read_csv(MANIFEST_CSV)
+
+# Iterate manifest rows
+for idx, row in df.iterrows():
+    sample   = row['Sample']
+    path     = row['FullPath']
+    label    = row['Label']
+    mclass   = row['Malware_Class']
+
+    # Skip if we already processed this sample
+    # (optional resume logic)
+    # You could read OUTPUT_CSV into a set at start and skip any sample in it.
+
+    print(f"[+] Processing ({idx+1}/{len(df)}): {sample}")
+
+    cmd = [
+        APIMINER_EXE,
+        "--app", path,
+        "--dll", MONITOR_DLL
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SECS
+        )
+        apis = parse_apis(proc.stdout)
+        with open(OUTPUT_CSV, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                sample,
+                path,
+                label,
+                mclass,
+                ";".join(apis)
+            ])
+
+    except subprocess.TimeoutExpired:
+        msg = f"Timeout on {sample}"
+        print("[!] " + msg)
+        logging.error(msg)
+
+    except Exception as e:
+        msg = f"Error on {sample}: {e}"
+        print("[!] " + msg)
+        logging.error(msg)
+
+print("[✔] Dynamic feature extraction complete.")
+
